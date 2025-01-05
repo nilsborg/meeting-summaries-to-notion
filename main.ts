@@ -10,12 +10,18 @@ const transcriptionFolder = "/Users/nilsborg/Transscripts/source";
 const promptFilePath = "/Users/nilsborg/Transscripts/prompt.md"; // Path to your prompt file
 
 // Load environment variables
-const env = config();
+// Explicitly specify the path to the .env file
+const env = config({ path: "/Users/nilsborg/Transscripts/.env" });
 const { OPENAI_API_KEY, NOTION_API_KEY, NOTION_DATABASE_ID, NOTION_USER_ID } =
   env;
 
-if (!OPENAI_API_KEY || !NOTION_API_KEY || !NOTION_DATABASE_ID) {
-  console.error("Error: Missing OPENAI_API_KEY in the environment file.");
+if (
+  !OPENAI_API_KEY ||
+  !NOTION_API_KEY ||
+  !NOTION_DATABASE_ID ||
+  !NOTION_USER_ID
+) {
+  console.error("Error: Missing env vars");
   Deno.exit(1);
 }
 

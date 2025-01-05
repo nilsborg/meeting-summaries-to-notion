@@ -2,8 +2,8 @@
 
 LOG_FILE="/Users/nilsborg/Transscripts/debug.log"
 DENO_PATH="/opt/homebrew/bin/deno"
-SCRIPT_DIR="/Users/nilsborg/Transscripts"
-SCRIPT_PATH="/Users/nilsborg/Transscripts/script.ts"
+SCRIPT_PATH="/Users/nilsborg/Transscripts/main.ts"
+ENV_FILE="/Users/nilsborg/Transscripts/.env"
 
 echo "$(date): Waiting for 20 seconds before running the Deno script..." >> "$LOG_FILE"
 sleep 20
@@ -21,5 +21,5 @@ if [ ! -f "$SCRIPT_PATH" ]; then
 fi
 
 echo "$(date): Running the Deno script..." >> "$LOG_FILE"
-$DENO_PATH run --allow-net --allow-write="/Users/nilsborg/Transscripts/summary.txt" --allow-read="$SCRIPT_DIR" "$SCRIPT_PATH" >> "$LOG_FILE" 2>&1
+OPENAI_API_KEY=$OPENAI_API_KEY $DENO_PATH run --allow-net --allow-env --allow-read="." "$SCRIPT_PATH" >> "$LOG_FILE" 2>&1
 echo "$(date): Finished running the Deno script." >> "$LOG_FILE"
