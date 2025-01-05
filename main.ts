@@ -4,16 +4,17 @@ import { config } from "https://deno.land/x/dotenv/mod.ts";
 import { getLatestFile } from "./functions/getLatestFile.ts";
 import { loadPrompt } from "./functions/loadPrompt.ts";
 import { getChatGPTSummary } from "./functions/getChatGPTSummary.ts";
+import { createNotionDocument } from "./functions/createNotionDocument.ts";
 
 const transcriptionFolder = "/Users/nilsborg/Transscripts/source";
 const promptFilePath = "/Users/nilsborg/Transscripts/prompt.md"; // Path to your prompt file
-const outputFilePath = "/Users/nilsborg/Transscripts/summary.txt"; // File to save the summary
 
 // Load environment variables
 const env = config();
-const apiKey = env.OPENAI_API_KEY; // The API key is read from the .env file
+const { OPENAI_API_KEY, NOTION_API_KEY, NOTION_DATABASE_ID, NOTION_USER_ID } =
+  env;
 
-if (!apiKey) {
+if (!OPENAI_API_KEY || !NOTION_API_KEY || !NOTION_DATABASE_ID) {
   console.error("Error: Missing OPENAI_API_KEY in the environment file.");
   Deno.exit(1);
 }
@@ -32,15 +33,33 @@ async function main() {
     // 3. Send file contents to ChatGPT for summarization
     const basePrompt = await loadPrompt(promptFilePath);
     const prompt = `${basePrompt}\n\n---\n\n${fileContents}`;
-
+    let summary;
     console.log("Sending content to ChatGPT for summarization...");
     try {
-      const summary = await getChatGPTSummary(prompt, apiKey);
-      console.log("Summary received. Writing to output file...");
-      await Deno.writeTextFile(outputFilePath, summary);
-      console.log(`Summary saved to ${outputFilePath}`);
+      summary = await getChatGPTSummary(prompt, OPENAI_API_KEY);
+      console.log("Summary received:", summary);
     } catch (error) {
       console.error("Error during ChatGPT summarization:", error);
+    }
+
+    if (!summary) {
+      console.error("Error: Summary is empty.");
+      return;
+    }
+
+    // 4. Save summary to Notion
+    const documentTitle = "Meeting Notes - " + new Date().toLocaleDateString();
+
+    try {
+      await createNotionDocument(
+        documentTitle,
+        summary,
+        NOTION_USER_ID,
+        NOTION_DATABASE_ID,
+        NOTION_API_KEY
+      );
+    } catch (error) {
+      console.error("Error creating Notion document:", error);
     }
   } else {
     console.log("No valid files found in the folder.");
