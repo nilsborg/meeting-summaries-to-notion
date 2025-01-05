@@ -19,15 +19,17 @@ if (!apiKey) {
 }
 
 async function main() {
+  // 1. Get the latest transcription file
   const latestFile = await getLatestFile(transcriptionFolder);
+
   if (latestFile) {
     console.log(`Latest file: ${latestFile}`);
 
-    // Read the contents of the latest file
+    // 2. Read the contents of the latest file
     const fileContents = await Deno.readTextFile(latestFile);
     console.log(`Contents of the latest file:\n${fileContents}`);
 
-    // Load the prompt
+    // 3. Send file contents to ChatGPT for summarization
     const basePrompt = await loadPrompt(promptFilePath);
     const prompt = `${basePrompt}\n\n---\n\n${fileContents}`;
 
