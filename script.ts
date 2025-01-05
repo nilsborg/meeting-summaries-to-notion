@@ -1,10 +1,12 @@
+/// <reference lib="deno.ns" />
+
 const transcriptionFolder = "/Users/nilsborg/Transscripts/source";
 const apiKey = ""; // Replace with your OpenAI API key
+const promptFilePath = "/Users/nilsborg/Transscripts/prompt.md"; // Path to your prompt file
 const outputFilePath = "/Users/nilsborg/Transscripts/summary.txt"; // File to save the summary
 
 async function getLatestFile(folder: string): Promise<string | null> {
   try {
-    // Read all entries in the folder
     const entries = [];
     for await (const entry of Deno.readDir(folder)) {
       if (entry.isFile) {
@@ -14,16 +16,25 @@ async function getLatestFile(folder: string): Promise<string | null> {
       }
     }
 
-    // Sort files by modification time (descending)
     const sortedFiles = entries
       .filter((entry) => entry.mtime) // Ensure mtime is not null
       .sort((a, b) => b.mtime!.getTime() - a.mtime!.getTime());
 
-    // Return the most recently modified file
     return sortedFiles.length > 0 ? sortedFiles[0].file : null;
   } catch (error) {
     console.error("Error retrieving the latest file:", error);
     return null;
+  }
+}
+
+async function loadPrompt(): Promise<string> {
+  try {
+    const prompt = await Deno.readTextFile(promptFilePath);
+    console.log("Loaded prompt from file.");
+    return prompt;
+  } catch (error) {
+    console.error("Error loading prompt file:", error);
+    throw error;
   }
 }
 
@@ -70,8 +81,11 @@ async function main() {
     const fileContents = await Deno.readTextFile(latestFile);
     console.log(`Contents of the latest file:\n${fileContents}`);
 
+    // Load the prompt
+    const basePrompt = await loadPrompt();
+    const prompt = `${basePrompt}\n\n---\n\n${fileContents}`;
+
     console.log("Sending content to ChatGPT for summarization...");
-    const prompt = `Summarize the following transcript:\n\n${fileContents}`;
     try {
       const summary = await sendToChatGPT(prompt);
       console.log("Summary received. Writing to output file...");
