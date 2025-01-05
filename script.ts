@@ -1,9 +1,20 @@
 /// <reference lib="deno.ns" />
 
+import { config } from "https://deno.land/x/dotenv/mod.ts";
+
 const transcriptionFolder = "/Users/nilsborg/Transscripts/source";
 const apiKey = ""; // Replace with your OpenAI API key
 const promptFilePath = "/Users/nilsborg/Transscripts/prompt.md"; // Path to your prompt file
 const outputFilePath = "/Users/nilsborg/Transscripts/summary.txt"; // File to save the summary
+
+// Load environment variables
+const env = config();
+const apiKey = env.OPENAI_API_KEY; // The API key is read from the .env file
+
+if (!apiKey) {
+  console.error("Error: Missing OPENAI_API_KEY in the environment file.");
+  Deno.exit(1);
+}
 
 async function getLatestFile(folder: string): Promise<string | null> {
   try {
