@@ -21,5 +21,5 @@ if [ ! -f "$SCRIPT_PATH" ]; then
 fi
 
 echo "$(date): Running the Deno script..." >> "$LOG_FILE"
-$DENO_PATH run --allow-read="$SCRIPT_DIR" "$SCRIPT_PATH" >> "$LOG_FILE" 2>&1
+$DENO_PATH run --allow-net --allow-write="/Users/nilsborg/Transscripts/summary.txt" --allow-read="$SCRIPT_DIR" "$SCRIPT_PATH" >> "$LOG_FILE" 2>&1
 echo "$(date): Finished running the Deno script." >> "$LOG_FILE"
