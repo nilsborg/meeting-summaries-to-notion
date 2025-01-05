@@ -3,7 +3,6 @@
 import { config } from "https://deno.land/x/dotenv/mod.ts";
 
 const transcriptionFolder = "/Users/nilsborg/Transscripts/source";
-const apiKey = ""; // Replace with your OpenAI API key
 const promptFilePath = "/Users/nilsborg/Transscripts/prompt.md"; // Path to your prompt file
 const outputFilePath = "/Users/nilsborg/Transscripts/summary.txt"; // File to save the summary
 
