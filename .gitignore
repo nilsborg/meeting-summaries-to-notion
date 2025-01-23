@@ -3,3 +3,4 @@ debug.log
 source/
 .vscode
 summary.txt
+.DS_Store

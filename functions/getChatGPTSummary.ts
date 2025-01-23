@@ -2,6 +2,8 @@ export async function getChatGPTSummary(
   prompt: string,
   apiKey: string
 ): Promise<string> {
+  console.log("Sending content to ChatGPT for summarization...");
+
   const apiUrl = "https://api.openai.com/v1/chat/completions";
   const headers = {
     "Content-Type": "application/json",
