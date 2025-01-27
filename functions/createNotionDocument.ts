@@ -6,14 +6,14 @@ export async function createNotionDocument(
   userId: string,
   notionDatabaseId: string,
   notionApiKey: string
-): Promise<void> {
+): Promise<string> {
   const url = "https://api.notion.com/v1/pages";
 
   const body = {
     parent: { database_id: notionDatabaseId },
     properties: {
       Name: { title: [{ text: { content: title } }] },
-      Attendees: { people: [{ object: "user", id: userId }] }, // Replace "Author" with your database's author property name
+      Attendees: { people: [{ object: "user", id: userId }] },
     },
     children: await markdownToBlocks(content),
   };
@@ -33,5 +33,9 @@ export async function createNotionDocument(
     throw new Error(`Notion API error: ${response.statusText}, ${errorText}`);
   }
 
+  const responseData = await response.json();
+  const documentUrl = `https://notion.so/${responseData.id.replace(/-/g, "")}`;
+
   console.log("Document successfully created in Notion.");
+  return documentUrl;
 }
