@@ -6,6 +6,7 @@ import { loadPrompt } from "./functions/loadPrompt.ts";
 // import { getChatGPTSummary } from "./functions/getChatGPTSummary.ts";
 import { createNotionDocument } from "./functions/createNotionDocument.ts";
 import { getClaudeSummary } from "./functions/getClaudeSummary.ts";
+import { showNotification } from "./functions/showNotification.ts";
 
 const transcriptionFolder = "/Users/nilsborg/Transscripts/source";
 const promptFilePath = "/Users/nilsborg/Transscripts/prompt.md"; // Path to your prompt file
@@ -48,35 +49,46 @@ async function main() {
     let summary;
 
     try {
-      // summary = await getChatGPTSummary(prompt, OPENAI_API_KEY);
       summary = await getClaudeSummary(prompt, ANTHROPIC_API_KEY);
       console.log("Summary received:", summary);
     } catch (error) {
       console.error("Error during summarization:", error);
-    }
-
-    if (!summary) {
-      console.error("Error: Summary is empty.");
-      return;
+      await showNotification(
+        "Transcription Error",
+        "Failed to generate summary"
+      );
+      Deno.exit();
     }
 
     // 4. Save summary to Notion
     const documentTitle = "Meeting Notes - " + new Date().toLocaleDateString();
 
     try {
-      await createNotionDocument(
+      const documentUrl = await createNotionDocument(
         documentTitle,
         summary,
         NOTION_USER_ID,
         NOTION_DATABASE_ID,
         NOTION_API_KEY
       );
+      await showNotification(
+        "Document Created",
+        "Your meeting notes are ready",
+        documentUrl
+      );
     } catch (error) {
       console.error("Error creating Notion document:", error);
+      await showNotification("Notion Error", "Failed to create document");
+      Deno.exit();
     }
   } else {
-    console.log("No valid files found in the folder.");
+    console.error("No valid files found in the folder.");
+    await showNotification("Error", "No transcription files found");
+    Deno.exit();
   }
 }
 
-main().catch((error) => console.error("An error occurred:", error));
+main().catch(async (error) => {
+  console.error("An error occurred:", error);
+  await showNotification("Script Error", "An unexpected error occurred");
+});
