@@ -45,11 +45,15 @@ async function main() {
 
     // 3. Send file contents to Ai for summarization
     const basePrompt = await loadPrompt(promptFilePath);
-    const prompt = `${basePrompt}\n\n---\n\n${fileContents}`;
+    // const prompt = `${basePrompt}\n\n---\n\n${fileContents}`;
     let summary;
 
     try {
-      summary = await getClaudeSummary(prompt, ANTHROPIC_API_KEY);
+      summary = await getClaudeSummary(
+        basePrompt,
+        fileContents,
+        ANTHROPIC_API_KEY
+      );
       console.log("Summary received:", summary);
     } catch (error) {
       console.error("Error during summarization:", error);

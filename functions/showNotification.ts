@@ -11,7 +11,7 @@ export async function showNotification(
   }
 
   try {
-    const command = new Deno.Command("terminal-notifier", {
+    const command = new Deno.Command("/opt/homebrew/bin/terminal-notifier", {
       args: args,
     });
 
