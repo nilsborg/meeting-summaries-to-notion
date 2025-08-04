@@ -7,6 +7,7 @@ import { loadPrompt } from "./functions/loadPrompt.ts";
 import { createNotionDocument } from "./functions/createNotionDocument.ts";
 import { getClaudeSummary } from "./functions/getClaudeSummary.ts";
 import { showNotification } from "./functions/showNotification.ts";
+import { logProcessedFile } from "./functions/logProcessedFile.ts";
 
 const transcriptionFolder = "/Users/nilsborg/Transscripts/source";
 const promptFilePath = "/Users/nilsborg/Transscripts/prompt.md"; // Path to your prompt file
@@ -52,14 +53,15 @@ async function main() {
       summary = await getClaudeSummary(
         basePrompt,
         fileContents,
-        ANTHROPIC_API_KEY
+        ANTHROPIC_API_KEY,
       );
       console.log("Summary received:", summary);
     } catch (error) {
       console.error("Error during summarization:", error);
+      await logProcessedFile(latestFile, false);
       await showNotification(
         "Transcription Error",
-        "Failed to generate summary"
+        "Failed to generate summary",
       );
       Deno.exit();
     }
@@ -73,15 +75,17 @@ async function main() {
         summary,
         NOTION_USER_ID,
         NOTION_DATABASE_ID,
-        NOTION_API_KEY
+        NOTION_API_KEY,
       );
+      await logProcessedFile(latestFile, true, documentUrl);
       await showNotification(
         "Document Created",
         "Your meeting notes are ready",
-        documentUrl
+        documentUrl,
       );
     } catch (error) {
       console.error("Error creating Notion document:", error);
+      await logProcessedFile(latestFile, false);
       await showNotification("Notion Error", "Failed to create document");
       Deno.exit();
     }

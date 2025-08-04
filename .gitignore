@@ -1,5 +1,6 @@
 .env
 debug.log
+processed_files.json
 source/
 .vscode
 summary.txt
