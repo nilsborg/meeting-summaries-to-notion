@@ -7,33 +7,124 @@ import { createNotionDocument } from "./functions/createNotionDocument.ts";
 import { showNotification } from "./functions/showNotification.ts";
 import { logProcessedFile } from "./functions/logProcessedFile.ts";
 import { getOpenRouterSummary } from "./functions/getOpenRouterSummary.ts";
-import { getSummaryModelConfigs } from "./functions/getSummaryModelConfigs.ts";
+import {
+  getSummaryModelConfigs,
+  type SummaryModelConfig,
+} from "./functions/getSummaryModelConfigs.ts";
 
 const transcriptionFolder = "/Users/nilsborg/Transscripts/source";
-const promptFilePath = "/Users/nilsborg/Transscripts/prompt.md"; // Path to your prompt file
+const promptPaths = {
+  meeting: "/Users/nilsborg/Transscripts/prompt.md",
+  "project-updates": "/Users/nilsborg/Transscripts/project_updates_prompt.md",
+} as const;
+
+type FlowKey = keyof typeof promptPaths;
+
+interface FlowConfig {
+  promptFilePath: string;
+  notionDatabaseEnvKey: string;
+  includeAttendees?: boolean;
+  documentTitleBuilder?: () => string;
+  summaryModels: SummaryModelConfig[];
+  titlePropertyName: string;
+  additionalProperties?: Record<string, unknown>;
+  notifications: {
+    successTitle: string;
+    successMessage: string;
+    failureTitle: string;
+    failureMessage: string;
+  };
+}
+
+const DEFAULT_SUMMARY_MODELS = getSummaryModelConfigs();
+
+const FLOW_CONFIGS: Record<FlowKey, FlowConfig> = {
+  meeting: {
+    promptFilePath: promptPaths.meeting,
+    notionDatabaseEnvKey: "NOTION_MEETING_DATABASE_ID",
+    includeAttendees: true,
+    summaryModels: [...DEFAULT_SUMMARY_MODELS],
+    titlePropertyName: "Name",
+    documentTitleBuilder: () =>
+      "Meeting Notes - " + new Date().toLocaleDateString(),
+    notifications: {
+      successTitle: "Document Created",
+      successMessage: "Your meeting notes are ready",
+      failureTitle: "Notion Error",
+      failureMessage: "Failed to create document",
+    },
+  },
+  "project-updates": {
+    promptFilePath: promptPaths["project-updates"],
+    notionDatabaseEnvKey: "NOTION_PROJECT_UPDATES_DATABASE_ID",
+    includeAttendees: false,
+    summaryModels: [
+      { label: "Claude Summary", model: "anthropic/claude-opus-4.1" },
+    ],
+    titlePropertyName: "Title",
+    documentTitleBuilder: () =>
+      "Project Updates - " + new Date().toLocaleDateString(),
+    notifications: {
+      successTitle: "Project Update Ready",
+      successMessage: "Your project update has been saved",
+      failureTitle: "Notion Error",
+      failureMessage: "Failed to create project update",
+    },
+  },
+};
+
+const FLOW_ALIASES: Record<string, FlowKey> = {
+  meeting: "meeting",
+  meetings: "meeting",
+  default: "meeting",
+  "project-updates": "project-updates",
+  project_updates: "project-updates",
+  project: "project-updates",
+  projects: "project-updates",
+};
 
 // Load environment variables
 // Explicitly specify the path to the .env file
-const env = config({ path: "/Users/nilsborg/Transscripts/.env" });
-const {
-  OPENROUTER_API_KEY,
-  OPENROUTER_SUMMARY_MODELS,
-  NOTION_API_KEY,
-  NOTION_DATABASE_ID,
-  NOTION_USER_ID,
-} = env;
+const env = config({ path: "/Users/nilsborg/Transscripts/.env" }) as Record<
+  string,
+  string
+>;
 
-if (
-  !OPENROUTER_API_KEY ||
-  !NOTION_API_KEY ||
-  !NOTION_DATABASE_ID ||
-  !NOTION_USER_ID
-) {
-  console.error("Error: Missing env vars");
+const resolveEnv = (key: string): string | undefined => {
+  return env[key] ?? Deno.env.get(key);
+};
+
+const rawFlow = (Deno.args[0] ?? resolveEnv("FLOW_TYPE") ?? "meeting")
+  .trim()
+  .toLowerCase();
+const flowKey: FlowKey = FLOW_ALIASES[rawFlow] ?? "meeting";
+const flowConfig = FLOW_CONFIGS[flowKey];
+
+const OPENROUTER_API_KEY = resolveEnv("OPENROUTER_API_KEY");
+const NOTION_API_KEY = resolveEnv("NOTION_API_KEY");
+const NOTION_USER_ID = resolveEnv("NOTION_USER_ID");
+const notionDatabaseId = resolveEnv(flowConfig.notionDatabaseEnvKey);
+
+if (!OPENROUTER_API_KEY || !NOTION_API_KEY) {
+  console.error("Error: Missing OpenRouter or Notion API key env vars");
   Deno.exit(1);
 }
 
-const summarizerConfigs = getSummaryModelConfigs(OPENROUTER_SUMMARY_MODELS);
+if (!notionDatabaseId) {
+  console.error(
+    `Error: Missing env var ${flowConfig.notionDatabaseEnvKey} for flow ${flowKey}`
+  );
+  Deno.exit(1);
+}
+
+if (flowConfig.includeAttendees && !NOTION_USER_ID) {
+  console.error("Error: Missing NOTION_USER_ID env var for attendees field");
+  Deno.exit(1);
+}
+
+const summarizerConfigs = flowConfig.summaryModels;
+
+console.log(`Running flow: ${flowKey}`);
 
 async function main() {
   // 1. Get the latest transcription file
@@ -47,7 +138,7 @@ async function main() {
     console.log(`Contents of the latest file:\n${fileContents}`);
 
     // 3. Send file contents to Ai for summarization
-    const basePrompt = await loadPrompt(promptFilePath);
+    const basePrompt = await loadPrompt(flowConfig.promptFilePath);
     const summaries: { label: string; content: string }[] = [];
 
     for (const config of summarizerConfigs) {
@@ -63,12 +154,12 @@ async function main() {
       } catch (error) {
         console.error(
           `Error during summarization with ${config.label} (${config.model}):`,
-          error,
+          error
         );
-        await logProcessedFile(latestFile, false);
+        await logProcessedFile(latestFile, false, undefined, flowKey);
         await showNotification(
           "Transcription Error",
-          `Failed to generate ${config.label}`,
+          `Failed to generate ${config.label}`
         );
         Deno.exit();
       }
@@ -79,26 +170,36 @@ async function main() {
       .join("\n\n");
 
     // 4. Save summary to Notion
-    const documentTitle = "Meeting Notes - " + new Date().toLocaleDateString();
+    const documentTitle = flowConfig.documentTitleBuilder
+      ? flowConfig.documentTitleBuilder()
+      : "Summary - " + new Date().toLocaleDateString();
 
     try {
       const documentUrl = await createNotionDocument(
         documentTitle,
         combinedSummary,
         NOTION_USER_ID,
-        NOTION_DATABASE_ID,
+        notionDatabaseId,
         NOTION_API_KEY,
+        {
+          includeAttendees: flowConfig.includeAttendees,
+          titlePropertyName: flowConfig.titlePropertyName,
+          additionalProperties: flowConfig.additionalProperties,
+        }
       );
-      await logProcessedFile(latestFile, true, documentUrl);
+      await logProcessedFile(latestFile, true, documentUrl, flowKey);
       await showNotification(
-        "Document Created",
-        "Your meeting notes are ready",
-        documentUrl,
+        flowConfig.notifications.successTitle,
+        flowConfig.notifications.successMessage,
+        documentUrl
       );
     } catch (error) {
       console.error("Error creating Notion document:", error);
-      await logProcessedFile(latestFile, false);
-      await showNotification("Notion Error", "Failed to create document");
+      await logProcessedFile(latestFile, false, undefined, flowKey);
+      await showNotification(
+        flowConfig.notifications.failureTitle,
+        flowConfig.notifications.failureMessage
+      );
       Deno.exit();
     }
   } else {

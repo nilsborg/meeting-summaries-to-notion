@@ -1,11 +1,12 @@
 #!/bin/bash
 
+FLOW="${1:-meeting}"
 LOG_FILE="/Users/nilsborg/Transscripts/debug.log"
 DENO_PATH="/opt/homebrew/bin/deno"
 SCRIPT_PATH="/Users/nilsborg/Transscripts/main.ts"
 ENV_FILE="/Users/nilsborg/Transscripts/.env"
 
-echo "$(date): Waiting for 20 seconds before running the Deno script..." >> "$LOG_FILE"
+echo "$(date): Waiting for 20 seconds before running the Deno script (flow: $FLOW)..." >> "$LOG_FILE"
 sleep 20
 
 # Verify Deno path
@@ -20,7 +21,7 @@ if [ ! -f "$SCRIPT_PATH" ]; then
     exit 1
 fi
 
-echo "$(date): Running the Deno script..." >> "$LOG_FILE"
-OPENROUTER_API_KEY=$OPENROUTER_API_KEY OPENROUTER_SUMMARY_MODELS=$OPENROUTER_SUMMARY_MODELS \
-  $DENO_PATH run --allow-net --allow-run --allow-env --allow-read="." "$SCRIPT_PATH" >> "$LOG_FILE" 2>&1
+echo "$(date): Running the Deno script with flow '$FLOW'..." >> "$LOG_FILE"
+FLOW_TYPE="$FLOW" OPENROUTER_API_KEY=$OPENROUTER_API_KEY \
+  $DENO_PATH run --allow-net --allow-run --allow-env --allow-read="." "$SCRIPT_PATH" "$FLOW" >> "$LOG_FILE" 2>&1
 echo "$(date): Finished running the Deno script." >> "$LOG_FILE"

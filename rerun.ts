@@ -9,32 +9,143 @@ import {
   logProcessedFile,
 } from "./functions/logProcessedFile.ts";
 import { getOpenRouterSummary } from "./functions/getOpenRouterSummary.ts";
-import { getSummaryModelConfigs } from "./functions/getSummaryModelConfigs.ts";
+import {
+  getSummaryModelConfigs,
+  type SummaryModelConfig,
+} from "./functions/getSummaryModelConfigs.ts";
 
 const transcriptionFolder = "/Users/nilsborg/Transscripts/source";
-const promptFilePath = "/Users/nilsborg/Transscripts/prompt.md";
+const promptPaths = {
+  meeting: "/Users/nilsborg/Transscripts/prompt.md",
+  "project-updates": "/Users/nilsborg/Transscripts/project_updates_prompt.md",
+} as const;
+
+type FlowKey = keyof typeof promptPaths;
+
+interface FlowConfig {
+  promptFilePath: string;
+  notionDatabaseEnvKey: string;
+  includeAttendees?: boolean;
+  documentTitleBuilder?: (baseName: string) => string;
+  summaryModels: SummaryModelConfig[];
+  titlePropertyName: string;
+  additionalProperties?: Record<string, unknown>;
+  notifications: {
+    successTitle: string;
+    successMessage: string;
+    failureTitle: string;
+    failureMessage: string;
+  };
+}
+
+const DEFAULT_SUMMARY_MODELS = getSummaryModelConfigs();
+
+const FLOW_CONFIGS: Record<FlowKey, FlowConfig> = {
+  meeting: {
+    promptFilePath: promptPaths.meeting,
+    notionDatabaseEnvKey: "NOTION_MEETING_DATABASE_ID",
+    includeAttendees: true,
+    summaryModels: [...DEFAULT_SUMMARY_MODELS],
+    titlePropertyName: "Name",
+    documentTitleBuilder: (name) => `Meeting Notes - ${name}`,
+    notifications: {
+      successTitle: "Document Created",
+      successMessage: "Your meeting notes are ready",
+      failureTitle: "Notion Error",
+      failureMessage: "Failed to create document",
+    },
+  },
+  "project-updates": {
+    promptFilePath: promptPaths["project-updates"],
+    notionDatabaseEnvKey: "NOTION_PROJECT_UPDATES_DATABASE_ID",
+    includeAttendees: false,
+    summaryModels: [...DEFAULT_SUMMARY_MODELS],
+    titlePropertyName: "Title",
+    documentTitleBuilder: (name) => `Project Update - ${name}`,
+    notifications: {
+      successTitle: "Project Update Ready",
+      successMessage: "Your project update has been saved",
+      failureTitle: "Notion Error",
+      failureMessage: "Failed to create project update",
+    },
+  },
+};
+
+const FLOW_ALIASES: Record<string, FlowKey> = {
+  meeting: "meeting",
+  meetings: "meeting",
+  default: "meeting",
+  "project-updates": "project-updates",
+  "project_updates": "project-updates",
+  project: "project-updates",
+  projects: "project-updates",
+};
 
 // Load environment variables
-const env = config({ path: "/Users/nilsborg/Transscripts/.env" });
-const {
-  OPENROUTER_API_KEY,
-  OPENROUTER_SUMMARY_MODELS,
-  NOTION_API_KEY,
-  NOTION_DATABASE_ID,
-  NOTION_USER_ID,
-} = env;
+const env = config({ path: "/Users/nilsborg/Transscripts/.env" }) as Record<
+  string,
+  string
+>;
 
-if (
-  !OPENROUTER_API_KEY ||
-  !NOTION_API_KEY ||
-  !NOTION_DATABASE_ID ||
-  !NOTION_USER_ID
-) {
-  console.error("Error: Missing env vars");
+const resolveEnv = (key: string): string | undefined => {
+  return env[key] ?? Deno.env.get(key);
+};
+
+const parseFlowFromArgs = (args: string[]) => {
+  let flowArg: string | undefined;
+  const filteredArgs: string[] = [];
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+
+    if (arg === "--flow" || arg === "-F") {
+      flowArg = args[i + 1];
+      i++; // Skip next since it's the value
+      continue;
+    }
+
+    if (arg.startsWith("--flow=")) {
+      flowArg = arg.split("=")[1];
+      continue;
+    }
+
+    filteredArgs.push(arg);
+  }
+
+  return { flowArg, filteredArgs };
+};
+
+const { flowArg, filteredArgs } = parseFlowFromArgs([...Deno.args]);
+
+const rawFlow = (flowArg ?? resolveEnv("FLOW_TYPE") ?? "meeting").trim()
+  .toLowerCase();
+const flowKey: FlowKey = FLOW_ALIASES[rawFlow] ?? "meeting";
+const flowConfig = FLOW_CONFIGS[flowKey];
+
+const OPENROUTER_API_KEY = resolveEnv("OPENROUTER_API_KEY");
+const NOTION_API_KEY = resolveEnv("NOTION_API_KEY");
+const NOTION_USER_ID = resolveEnv("NOTION_USER_ID");
+const notionDatabaseId = resolveEnv(flowConfig.notionDatabaseEnvKey);
+
+if (!OPENROUTER_API_KEY || !NOTION_API_KEY) {
+  console.error("Error: Missing OpenRouter or Notion API key env vars");
   Deno.exit(1);
 }
 
-const summarizerConfigs = getSummaryModelConfigs(OPENROUTER_SUMMARY_MODELS);
+if (!notionDatabaseId) {
+  console.error(
+    `Error: Missing env var ${flowConfig.notionDatabaseEnvKey} for flow ${flowKey}`,
+  );
+  Deno.exit(1);
+}
+
+if (flowConfig.includeAttendees && !NOTION_USER_ID) {
+  console.error("Error: Missing NOTION_USER_ID env var for attendees field");
+  Deno.exit(1);
+}
+
+const summarizerConfigs = flowConfig.summaryModels;
+console.log(`Running rerun flow: ${flowKey}`);
 
 async function findMatchingFiles(searchTerm: string): Promise<string[]> {
   const matchingFiles: string[] = [];
@@ -124,7 +235,7 @@ async function processTranscription(filePath: string): Promise<void> {
   }
 
   // Load prompt and get summary
-  const basePrompt = await loadPrompt(promptFilePath);
+  const basePrompt = await loadPrompt(flowConfig.promptFilePath);
   const summaries: { label: string; content: string }[] = [];
 
   for (const config of summarizerConfigs) {
@@ -145,7 +256,7 @@ async function processTranscription(filePath: string): Promise<void> {
         `Error during summarization with ${config.label} (${config.model}):`,
         error,
       );
-      await logProcessedFile(filePath, false);
+      await logProcessedFile(filePath, false, undefined, flowKey);
       await showNotification(
         "Transcription Error",
         `Failed to generate ${config.label}`,
@@ -160,29 +271,42 @@ async function processTranscription(filePath: string): Promise<void> {
 
   // Create Notion document
   const fileName = filePath.split("/").pop() || "Unknown";
-  const documentTitle = `Meeting Notes - ${fileName.replace(".txt", "")}`;
+  const baseName = fileName.replace(/\.[^/.]+$/, "");
+  const documentTitle = flowConfig.documentTitleBuilder
+    ? flowConfig.documentTitleBuilder(baseName)
+    : `Summary - ${baseName}`;
+
+  const notionUserIdForDoc = flowConfig.includeAttendees ? NOTION_USER_ID : undefined;
 
   try {
     console.log("Creating Notion document...");
     const documentUrl = await createNotionDocument(
       documentTitle,
       combinedSummary,
-      NOTION_USER_ID,
-      NOTION_DATABASE_ID,
+      notionUserIdForDoc,
+      notionDatabaseId,
       NOTION_API_KEY,
+      {
+        includeAttendees: flowConfig.includeAttendees,
+        titlePropertyName: flowConfig.titlePropertyName,
+        additionalProperties: flowConfig.additionalProperties,
+      },
     );
 
     console.log(`✅ Success! Document created: ${documentUrl}`);
-    await logProcessedFile(filePath, true, documentUrl);
+    await logProcessedFile(filePath, true, documentUrl, flowKey);
     await showNotification(
-      "Document Created",
-      "Your meeting notes are ready",
+      flowConfig.notifications.successTitle,
+      flowConfig.notifications.successMessage,
       documentUrl,
     );
   } catch (error) {
     console.error("Error creating Notion document:", error);
-    await logProcessedFile(filePath, false);
-    await showNotification("Notion Error", "Failed to create document");
+    await logProcessedFile(filePath, false, undefined, flowKey);
+    await showNotification(
+      flowConfig.notifications.failureTitle,
+      flowConfig.notifications.failureMessage,
+    );
   }
 }
 
@@ -194,6 +318,7 @@ OPTIONS:
   -h, --help     Show this help message
   -l, --list     List the 10 most recent transcription files
   -f, --failed   List files that failed to process previously
+  -F, --flow     Specify the processing flow (meeting, project-updates)
 
 SEARCH_TERM:
   Partial filename or date pattern to match transcription files.
@@ -204,13 +329,14 @@ Examples:
   deno run --allow-all rerun.ts "Transcription.txt"    # All standard transcription files
   deno run --allow-all rerun.ts --list                 # Show recent files
   deno run --allow-all rerun.ts --failed               # Show previously failed files
+  deno run --allow-all rerun.ts --flow project-updates "20250127"
 
 If multiple files match, you'll be prompted to select one.
 `);
 }
 
 async function main() {
-  const args = Deno.args;
+  const args = filteredArgs;
 
   if (args.length === 0 || args.includes("-h") || args.includes("--help")) {
     showUsage();

@@ -4,6 +4,7 @@ export interface ProcessedFileRecord {
   processedAt: string;
   notionUrl?: string;
   success: boolean;
+  flowType?: string;
 }
 
 const LOG_FILE_PATH = "/Users/nilsborg/Transscripts/processed_files.json";
@@ -11,16 +12,19 @@ const LOG_FILE_PATH = "/Users/nilsborg/Transscripts/processed_files.json";
 export async function logProcessedFile(
   filePath: string,
   success: boolean,
-  notionUrl?: string
+  notionUrl?: string,
+  flowType?: string
 ): Promise<void> {
   const fileName = filePath.split('/').pop() || 'unknown';
+  const normalizedFlowType = flowType ?? 'meeting';
 
   const record: ProcessedFileRecord = {
     filePath,
     fileName,
     processedAt: new Date().toISOString(),
     notionUrl,
-    success
+    success,
+    flowType: normalizedFlowType
   };
 
   try {
@@ -36,7 +40,13 @@ export async function logProcessedFile(
     }
 
     // Remove any existing record for this file (to avoid duplicates)
-    existingRecords = existingRecords.filter(r => r.filePath !== filePath);
+    existingRecords = existingRecords.filter(r => {
+      const recordFlow = r.flowType ?? 'meeting';
+      if (r.filePath !== filePath) {
+        return true;
+      }
+      return recordFlow !== normalizedFlowType;
+    });
 
     // Add the new record
     existingRecords.push(record);
@@ -52,7 +62,7 @@ export async function logProcessedFile(
       JSON.stringify(existingRecords, null, 2)
     );
 
-    console.log(`✓ Logged processing result for ${fileName}`);
+    console.log(`✓ Logged processing result for ${fileName} (${normalizedFlowType})`);
   } catch (error) {
     console.error("Error logging processed file:", error);
     // Don't throw - logging failure shouldn't stop the main process

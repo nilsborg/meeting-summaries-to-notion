@@ -1,20 +1,38 @@
 import { markdownToBlocks } from "npm:@tryfabric/martian@1.2.4";
 
+export interface CreateNotionDocumentOptions {
+  properties?: Record<string, unknown>;
+  includeAttendees?: boolean;
+  titlePropertyName?: string;
+  additionalProperties?: Record<string, unknown>;
+}
+
 export async function createNotionDocument(
   title: string,
   content: string,
-  userId: string,
+  userId: string | undefined,
   notionDatabaseId: string,
-  notionApiKey: string
+  notionApiKey: string,
+  options: CreateNotionDocumentOptions = {}
 ): Promise<string> {
   const url = "https://api.notion.com/v1/pages";
 
+  const shouldIncludeAttendees = options.includeAttendees ?? Boolean(userId);
+  const titlePropertyName = options.titlePropertyName ?? "Name";
+
+  const defaultProperties: Record<string, unknown> = {
+    [titlePropertyName]: { title: [{ text: { content: title } }] },
+    ...(shouldIncludeAttendees && userId
+      ? { Attendees: { people: [{ object: "user", id: userId }] } }
+      : {}),
+    ...(options.additionalProperties ?? {}),
+  };
+
+  const properties = options.properties ?? defaultProperties;
+
   const body = {
     parent: { database_id: notionDatabaseId },
-    properties: {
-      Name: { title: [{ text: { content: title } }] },
-      Attendees: { people: [{ object: "user", id: userId }] },
-    },
+    properties,
     children: await markdownToBlocks(content),
   };
 

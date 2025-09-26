@@ -23,13 +23,13 @@ Create a `.env` file in the project root:
 
 ```env
 OPENROUTER_API_KEY=your_openrouter_api_key_here
-OPENROUTER_SUMMARY_MODELS="Claude Summary=anthropic/claude-3.5-sonnet,ChatGPT Summary=openai/gpt-4o-2024-05-13"
 NOTION_API_KEY=your_notion_api_key_here
-NOTION_DATABASE_ID=your_notion_database_id_here
+NOTION_MEETING_DATABASE_ID=your_meeting_minutes_database_id_here
 NOTION_USER_ID=your_notion_user_id_here
+NOTION_PROJECT_UPDATES_DATABASE_ID=your_project_updates_database_id_here # required for project-updates flow
 ```
 
-`OPENROUTER_SUMMARY_MODELS` is optional—omit it to use the defaults. Supply a comma-separated list of `Label=model_id` pairs to compare additional models.
+Both flows currently use the same two summary models (Claude and ChatGPT). To tweak them, edit `FLOW_CONFIGS` in `main.ts` and `rerun.ts`.
 
 ### File Structure
 ```
@@ -41,7 +41,8 @@ Transscripts/
 ├── find-by-date.ts          # Find files by date range
 ├── run.sh                   # Shell wrapper for main script
 ├── rerun.sh                 # Shell wrapper for rerun script
-├── prompt.md                # AI summarization prompt
+├── prompt.md                # Meeting notes prompt
+├── project_updates_prompt.md # Project update prompt
 ├── processed_files.json     # Processing log (auto-generated)
 └── .env                     # Environment variables
 ```
@@ -55,6 +56,16 @@ Process the latest transcription file:
 # or
 deno run --allow-all main.ts
 ```
+
+### Selecting a Flow
+```bash
+# Default meeting notes flow
+./run.sh meeting
+
+# Project updates flow
+./run.sh project-updates
+```
+`./run.sh` without arguments defaults to the meeting flow.
 
 ### Reprocessing Specific Files
 
@@ -81,6 +92,9 @@ deno run --allow-all rerun.ts --help
 ```bash
 # Process files from a specific date
 ./rerun.sh "20250127"
+
+# Project update flow reprocessing
+./rerun.sh --flow project-updates "20250127"
 
 # Process a specific file by date and time
 ./rerun.sh "20250127 1502"
