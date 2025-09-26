@@ -39,6 +39,9 @@ interface FlowConfig {
 }
 
 const DEFAULT_SUMMARY_MODELS = getSummaryModelConfigs();
+const PROJECT_UPDATE_SUMMARY_MODELS: SummaryModelConfig[] = [
+  { label: "Claude Summary", model: "anthropic/claude-opus-4.1" },
+];
 
 const FLOW_CONFIGS: Record<FlowKey, FlowConfig> = {
   meeting: {
@@ -59,7 +62,7 @@ const FLOW_CONFIGS: Record<FlowKey, FlowConfig> = {
     promptFilePath: promptPaths["project-updates"],
     notionDatabaseEnvKey: "NOTION_PROJECT_UPDATES_DATABASE_ID",
     includeAttendees: false,
-    summaryModels: [...DEFAULT_SUMMARY_MODELS],
+    summaryModels: [...PROJECT_UPDATE_SUMMARY_MODELS],
     titlePropertyName: "Title",
     documentTitleBuilder: (name) => `Project Update - ${name}`,
     notifications: {
@@ -265,9 +268,12 @@ async function processTranscription(filePath: string): Promise<void> {
     }
   }
 
-  const combinedSummary = summaries
-    .map((summary) => `## ${summary.label}\n\n${summary.content.trim()}`)
-    .join("\n\n");
+  const hasMultipleSummaries = summaries.length > 1;
+  const combinedSummary = hasMultipleSummaries
+    ? summaries
+      .map((summary) => `## ${summary.label}\n\n${summary.content.trim()}`)
+      .join("\n\n")
+    : (summaries[0]?.content.trim() ?? "");
 
   // Create Notion document
   const fileName = filePath.split("/").pop() || "Unknown";
