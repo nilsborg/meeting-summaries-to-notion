@@ -3,13 +3,13 @@
 import { config } from "https://deno.land/x/dotenv/mod.ts";
 import { loadPrompt } from "./functions/loadPrompt.ts";
 import { createNotionDocument } from "./functions/createNotionDocument.ts";
-import { getClaudeSummary } from "./functions/getClaudeSummary.ts";
 import { showNotification } from "./functions/showNotification.ts";
 import {
-  logProcessedFile,
   getFailedFiles,
-  ProcessedFileRecord,
+  logProcessedFile,
 } from "./functions/logProcessedFile.ts";
+import { getOpenRouterSummary } from "./functions/getOpenRouterSummary.ts";
+import { getSummaryModelConfigs } from "./functions/getSummaryModelConfigs.ts";
 
 const transcriptionFolder = "/Users/nilsborg/Transscripts/source";
 const promptFilePath = "/Users/nilsborg/Transscripts/prompt.md";
@@ -17,15 +17,15 @@ const promptFilePath = "/Users/nilsborg/Transscripts/prompt.md";
 // Load environment variables
 const env = config({ path: "/Users/nilsborg/Transscripts/.env" });
 const {
-  OPENAI_API_KEY,
-  ANTHROPIC_API_KEY,
+  OPENROUTER_API_KEY,
+  OPENROUTER_SUMMARY_MODELS,
   NOTION_API_KEY,
   NOTION_DATABASE_ID,
   NOTION_USER_ID,
 } = env;
 
 if (
-  !OPENAI_API_KEY ||
+  !OPENROUTER_API_KEY ||
   !NOTION_API_KEY ||
   !NOTION_DATABASE_ID ||
   !NOTION_USER_ID
@@ -33,6 +33,8 @@ if (
   console.error("Error: Missing env vars");
   Deno.exit(1);
 }
+
+const summarizerConfigs = getSummaryModelConfigs(OPENROUTER_SUMMARY_MODELS);
 
 async function findMatchingFiles(searchTerm: string): Promise<string[]> {
   const matchingFiles: string[] = [];
@@ -123,22 +125,38 @@ async function processTranscription(filePath: string): Promise<void> {
 
   // Load prompt and get summary
   const basePrompt = await loadPrompt(promptFilePath);
-  let summary: string;
+  const summaries: { label: string; content: string }[] = [];
 
-  try {
-    console.log("Generating summary with Claude...");
-    summary = await getClaudeSummary(
-      basePrompt,
-      fileContents,
-      ANTHROPIC_API_KEY,
-    );
-    console.log("Summary generated successfully");
-  } catch (error) {
-    console.error("Error during summarization:", error);
-    await logProcessedFile(filePath, false);
-    await showNotification("Transcription Error", "Failed to generate summary");
-    return;
+  for (const config of summarizerConfigs) {
+    try {
+      console.log(
+        `Generating summary with ${config.label} (${config.model})...`,
+      );
+      const content = await getOpenRouterSummary({
+        systemPrompt: basePrompt,
+        content: fileContents,
+        apiKey: OPENROUTER_API_KEY,
+        model: config.model,
+      });
+      summaries.push({ label: config.label, content });
+      console.log(`${config.label} summary generated successfully`);
+    } catch (error) {
+      console.error(
+        `Error during summarization with ${config.label} (${config.model}):`,
+        error,
+      );
+      await logProcessedFile(filePath, false);
+      await showNotification(
+        "Transcription Error",
+        `Failed to generate ${config.label}`,
+      );
+      return;
+    }
   }
+
+  const combinedSummary = summaries
+    .map((summary) => `## ${summary.label}\n\n${summary.content.trim()}`)
+    .join("\n\n");
 
   // Create Notion document
   const fileName = filePath.split("/").pop() || "Unknown";
@@ -148,7 +166,7 @@ async function processTranscription(filePath: string): Promise<void> {
     console.log("Creating Notion document...");
     const documentUrl = await createNotionDocument(
       documentTitle,
-      summary,
+      combinedSummary,
       NOTION_USER_ID,
       NOTION_DATABASE_ID,
       NOTION_API_KEY,

@@ -21,5 +21,6 @@ if [ ! -f "$SCRIPT_PATH" ]; then
 fi
 
 echo "$(date): Running the Deno script..." >> "$LOG_FILE"
-OPENAI_API_KEY=$OPENAI_API_KEY $DENO_PATH run --allow-net --allow-run --allow-env --allow-read="." "$SCRIPT_PATH" >> "$LOG_FILE" 2>&1
+OPENROUTER_API_KEY=$OPENROUTER_API_KEY OPENROUTER_SUMMARY_MODELS=$OPENROUTER_SUMMARY_MODELS \
+  $DENO_PATH run --allow-net --allow-run --allow-env --allow-read="." "$SCRIPT_PATH" >> "$LOG_FILE" 2>&1
 echo "$(date): Finished running the Deno script." >> "$LOG_FILE"

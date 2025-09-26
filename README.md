@@ -1,14 +1,14 @@
 # Meeting Transcriptions to Notion
 
-This project automatically processes meeting transcription files, summarizes them using Claude AI, and creates organized meeting notes in Notion.
+This project automatically processes meeting transcription files, summarizes them using configurable OpenRouter models (defaults to Claude and ChatGPT), and creates organized meeting notes in Notion so you can compare the results side by side.
 
 ## Overview
 
 The system:
 1. Monitors transcription files in the `source/` directory
 2. Processes the latest transcription file automatically
-3. Uses Claude AI to generate intelligent summaries
-4. Creates well-formatted meeting notes in your Notion database
+3. Generates summaries via OpenRouter for each configured model (Claude and ChatGPT by default)
+4. Creates well-formatted meeting notes in your Notion database containing both summaries
 5. Tracks processing results and provides tools for reprocessing failed files
 
 ## Setup
@@ -16,19 +16,20 @@ The system:
 ### Prerequisites
 - [Deno](https://deno.land/) installed
 - Notion account with API access
-- Anthropic API key for Claude
-- OpenAI API key (optional, for future ChatGPT integration)
+- OpenRouter account with an API key (grants access to the models you want to use)
 
 ### Environment Variables
 Create a `.env` file in the project root:
 
 ```env
-ANTHROPIC_API_KEY=your_anthropic_api_key_here
+OPENROUTER_API_KEY=your_openrouter_api_key_here
+OPENROUTER_SUMMARY_MODELS="Claude Summary=anthropic/claude-3.5-sonnet,ChatGPT Summary=openai/gpt-4o-2024-05-13"
 NOTION_API_KEY=your_notion_api_key_here
 NOTION_DATABASE_ID=your_notion_database_id_here
 NOTION_USER_ID=your_notion_user_id_here
-OPENAI_API_KEY=your_openai_api_key_here
 ```
+
+`OPENROUTER_SUMMARY_MODELS` is optional—omit it to use the defaults. Supply a comma-separated list of `Label=model_id` pairs to compare additional models.
 
 ### File Structure
 ```
@@ -161,7 +162,7 @@ If processing fails:
 ## Customization
 
 ### Prompt Modification
-Edit `prompt.md` to customize how Claude summarizes your meetings. The prompt should include instructions for:
+Edit `prompt.md` to customize how each model summarizes your meetings. The prompt should include instructions for:
 - Summary structure and format
 - Key information to extract
 - Tone and style preferences
@@ -187,14 +188,14 @@ chmod +x run.sh rerun.sh
 The scripts require these Deno permissions:
 - `--allow-read`: Read transcription files and configuration
 - `--allow-write`: Write processing logs
-- `--allow-net`: API calls to Claude and Notion
+- `--allow-net`: API calls to OpenRouter and Notion
 - `--allow-env`: Access environment variables
 - `--allow-run`: Execute notification commands
 
 Using `--allow-all` grants all necessary permissions.
 
 ### API Issues
-- **Claude API**: Verify your Anthropic API key has sufficient credits
+- **OpenRouter API**: Verify your API key has access to the requested models and sufficient credits
 - **Notion API**: Ensure your Notion integration has access to the target database
 - **Rate Limits**: The system will retry failed requests with appropriate delays
 
