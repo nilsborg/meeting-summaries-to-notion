@@ -23,5 +23,5 @@ fi
 
 echo "$(date): Running the Deno script with flow '$FLOW'..." >> "$LOG_FILE"
 FLOW_TYPE="$FLOW" OPENROUTER_API_KEY=$OPENROUTER_API_KEY \
-  $DENO_PATH run --allow-net --allow-run --allow-env --allow-read="." "$SCRIPT_PATH" "$FLOW" >> "$LOG_FILE" 2>&1
+  $DENO_PATH run --allow-net --allow-write --allow-run --allow-env --allow-read="." "$SCRIPT_PATH" "$FLOW" >> "$LOG_FILE" 2>&1
 echo "$(date): Finished running the Deno script." >> "$LOG_FILE"

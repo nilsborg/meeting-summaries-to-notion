@@ -4,8 +4,7 @@ export interface SummaryModelConfig {
 }
 
 const DEFAULT_MODELS: SummaryModelConfig[] = [
-  { label: "Claude Summary", model: "anthropic/claude-opus-4.1" },
-  { label: "ChatGPT Summary", model: "openai/gpt-5" },
+  { label: "Claude Summary", model: "anthropic/claude-sonnet-4.5" },
 ];
 
 export function getSummaryModelConfigs(

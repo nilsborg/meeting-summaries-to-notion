@@ -1,14 +1,14 @@
 # Meeting Transcriptions to Notion
 
-This project automatically processes meeting transcription files, summarizes them using configurable OpenRouter models (defaults to Claude and ChatGPT), and creates organized meeting notes in Notion so you can compare the results side by side.
+This project automatically processes meeting transcription files, summarizes them using configurable OpenRouter models (Claude by default), and creates organized meeting notes in Notion complete with the original transcript attached for download.
 
 ## Overview
 
 The system:
 1. Monitors transcription files in the `source/` directory
 2. Processes the latest transcription file automatically
-3. Generates summaries via OpenRouter for each configured model (Claude and ChatGPT by default)
-4. Creates well-formatted meeting notes in your Notion database containing both summaries
+3. Generates a summary via OpenRouter for each configured model (Claude by default)
+4. Creates well-formatted meeting notes in your Notion database and attaches the full transcript as a downloadable file
 5. Tracks processing results and provides tools for reprocessing failed files
 
 ## Setup
@@ -29,7 +29,7 @@ NOTION_USER_ID=your_notion_user_id_here
 NOTION_PROJECT_UPDATES_DATABASE_ID=your_project_updates_database_id_here # required for project-updates flow
 ```
 
-Both flows currently use the same two summary models (Claude and ChatGPT). To tweak them, edit `FLOW_CONFIGS` in `main.ts` and `rerun.ts`.
+Both flows currently use the same summary model (Claude). To tweak them, edit `FLOW_CONFIGS` in `main.ts` and `rerun.ts`.
 
 ### File Structure
 ```
