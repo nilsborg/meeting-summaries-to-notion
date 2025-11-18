@@ -227,7 +227,7 @@ Test individual components:
 # Test file discovery
 deno run --allow-all -e "
 import { getLatestFile } from './functions/getLatestFile.ts';
-console.log(await getLatestFile('/Users/nilsborg/Transscripts/source'));
+console.log(await getLatestFile('/Users/nilsborg/Repos/meeting-summaries-to-notion/source'));
 "
 
 # Test prompt loading

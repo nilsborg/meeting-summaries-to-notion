@@ -113,6 +113,6 @@ The new functionality integrates seamlessly with your existing workflow:
 
 ## File Locations
 
-All transcription files remain in `/Users/nilsborg/Transscripts/source/`  
-Processing log is stored in `/Users/nilsborg/Transscripts/processed_files.json`  
+All transcription files remain in `/Users/nilsborg/Repos/meeting-summaries-to-notion/source/`  
+Processing log is stored in `/Users/nilsborg/Repos/meeting-summaries-to-notion/processed_files.json`  
 All scripts are in the main project directory for easy access.

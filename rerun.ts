@@ -14,10 +14,10 @@ import {
   type SummaryModelConfig,
 } from "./functions/getSummaryModelConfigs.ts";
 
-const transcriptionFolder = "/Users/nilsborg/Transscripts/source";
+const transcriptionFolder = "/Users/nilsborg/Repos/meeting-summaries-to-notion/source";
 const promptPaths = {
-  meeting: "/Users/nilsborg/Transscripts/prompt.md",
-  "project-updates": "/Users/nilsborg/Transscripts/project_updates_prompt.md",
+  meeting: "/Users/nilsborg/Repos/meeting-summaries-to-notion/prompt.md",
+  "project-updates": "/Users/nilsborg/Repos/meeting-summaries-to-notion/project_updates_prompt.md",
 } as const;
 
 type FlowKey = keyof typeof promptPaths;
@@ -85,7 +85,7 @@ const FLOW_ALIASES: Record<string, FlowKey> = {
 };
 
 // Load environment variables
-const env = config({ path: "/Users/nilsborg/Transscripts/.env" }) as Record<
+const env = config({ path: "/Users/nilsborg/Repos/meeting-summaries-to-notion/.env" }) as Record<
   string,
   string
 >;

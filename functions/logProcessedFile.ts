@@ -7,7 +7,7 @@ export interface ProcessedFileRecord {
   flowType?: string;
 }
 
-const LOG_FILE_PATH = "/Users/nilsborg/Transscripts/processed_files.json";
+const LOG_FILE_PATH = "/Users/nilsborg/Repos/meeting-summaries-to-notion/processed_files.json";
 
 export async function logProcessedFile(
   filePath: string,

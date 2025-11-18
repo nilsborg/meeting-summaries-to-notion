@@ -1,6 +1,6 @@
 /// <reference lib="deno.ns" />
 
-const transcriptionFolder = "/Users/nilsborg/Transscripts/source";
+const transcriptionFolder = "/Users/nilsborg/Repos/meeting-summaries-to-notion/source";
 
 interface FileWithDate {
   filePath: string;

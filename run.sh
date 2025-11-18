@@ -1,8 +1,8 @@
 #!/bin/bash
 
 FLOW="${1:-meeting}"
-TMP_SCRIPT="/Users/nilsborg/Transscripts/init.sh"
-LOG_FILE="/Users/nilsborg/Transscripts/debug.log"
+TMP_SCRIPT="/Users/nilsborg/Repos/meeting-summaries-to-notion/init.sh"
+LOG_FILE="/Users/nilsborg/Repos/meeting-summaries-to-notion/debug.log"
 
 # Ensure the log file is writable
 touch "$LOG_FILE" || { echo "Error: Cannot write to $LOG_FILE"; exit 1; }

@@ -1,10 +1,10 @@
 #!/bin/bash
 
 FLOW="${1:-meeting}"
-LOG_FILE="/Users/nilsborg/Transscripts/debug.log"
+LOG_FILE="/Users/nilsborg/Repos/meeting-summaries-to-notion/debug.log"
 DENO_PATH="/opt/homebrew/bin/deno"
-SCRIPT_PATH="/Users/nilsborg/Transscripts/main.ts"
-ENV_FILE="/Users/nilsborg/Transscripts/.env"
+SCRIPT_PATH="/Users/nilsborg/Repos/meeting-summaries-to-notion/main.ts"
+ENV_FILE="/Users/nilsborg/Repos/meeting-summaries-to-notion/.env"
 
 echo "$(date): Waiting for 20 seconds before running the Deno script (flow: $FLOW)..." >> "$LOG_FILE"
 sleep 20
