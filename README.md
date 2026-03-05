@@ -29,6 +29,32 @@ NOTION_USER_ID=your_notion_user_id_here
 NOTION_PROJECT_UPDATES_DATABASE_ID=your_project_updates_database_id_here # required for project-updates flow
 ```
 
+**Optional – Nextcloud Collectives:** To push the same meeting summary to a Nextcloud Collectives page, add:
+
+```env
+NEXTCLOUD_BASE_URL=https://your-nextcloud.example.com
+NEXTCLOUD_USERNAME=your-username
+NEXTCLOUD_APP_PASSWORD=your-app-password
+NEXTCLOUD_COLLECTIVE_ID=1
+NEXTCLOUD_COLLECTIVE_PARENT_PAGE_ID=85481
+```
+
+Use numeric IDs in `.env` for reliable matching. To get them, from the project root run:
+
+```bash
+deno run --allow-read --allow-net --allow-env scripts/list-collectives.ts
+```
+
+This prints each collective’s **id** and name. Then run with a collective id to list pages (and their ids):
+
+```bash
+deno run --allow-read --allow-net --allow-env scripts/list-collectives.ts 1
+```
+
+Set `NEXTCLOUD_COLLECTIVE_ID` and `NEXTCLOUD_COLLECTIVE_PARENT_PAGE_ID` to the numeric ids (no names or slugs). Create an [app password](https://docs.nextcloud.com/server/latest/developer_manual/client_apis/WebDAV/basic.html) in Nextcloud Settings → Security.
+
+**Temporary – skip Notion:** Set `SKIP_NOTION=1` (or `true`/`yes`) to push only to Nextcloud Collectives; Notion env vars are not required. Nextcloud must be configured when using this. Remove or set to `0` to re-enable Notion.
+
 Both flows currently use the same summary model (Claude). To tweak them, edit `FLOW_CONFIGS` in `main.ts` and `rerun.ts`.
 
 ### File Structure
@@ -43,6 +69,7 @@ Transscripts/
 ├── rerun.sh                 # Shell wrapper for rerun script
 ├── prompt.md                # Meeting notes prompt
 ├── project_updates_prompt.md # Project update prompt
+├── generated_summaries/     # Cached markdown summaries by flow (auto-generated)
 ├── processed_files.json     # Processing log (auto-generated)
 └── .env                     # Environment variables
 ```
@@ -104,6 +131,18 @@ deno run --allow-all rerun.ts --help
 ```
 
 If multiple files match your search term, you'll be prompted to select which one to process.
+
+### Local Markdown Cache for Reruns
+
+Generated summaries are cached locally as markdown files in:
+
+```text
+generated_summaries/<flow>/<transcription-file-base-name>.md
+```
+
+- If a cache file exists, `rerun.ts` reuses it and skips the OpenRouter summarization call.
+- If no cache file exists, the script generates a new summary and saves it to the cache.
+- `main.ts` also writes cache files, so reruns can reuse summaries from normal runs.
 
 ### Finding Files by Date
 

@@ -3,6 +3,7 @@
 import { config } from "https://deno.land/x/dotenv/mod.ts";
 import { loadPrompt } from "./functions/loadPrompt.ts";
 import { createNotionDocument } from "./functions/createNotionDocument.ts";
+import { createCollectivesDocument } from "./functions/createCollectivesDocument.ts";
 import { showNotification } from "./functions/showNotification.ts";
 import {
   getFailedFiles,
@@ -13,6 +14,11 @@ import {
   getSummaryModelConfigs,
   type SummaryModelConfig,
 } from "./functions/getSummaryModelConfigs.ts";
+import {
+  getSummaryCachePath,
+  readCachedSummary,
+  writeCachedSummary,
+} from "./functions/summaryCache.ts";
 
 const transcriptionFolder = "/Users/nilsborg/Repos/meeting-summaries-to-notion/source";
 const promptPaths = {
@@ -130,20 +136,43 @@ const NOTION_API_KEY = resolveEnv("NOTION_API_KEY");
 const NOTION_USER_ID = resolveEnv("NOTION_USER_ID");
 const notionDatabaseId = resolveEnv(flowConfig.notionDatabaseEnvKey);
 
-if (!OPENROUTER_API_KEY || !NOTION_API_KEY) {
-  console.error("Error: Missing OpenRouter or Notion API key env vars");
+const NEXTCLOUD_BASE_URL = resolveEnv("NEXTCLOUD_BASE_URL");
+const NEXTCLOUD_USERNAME = resolveEnv("NEXTCLOUD_USERNAME");
+const NEXTCLOUD_APP_PASSWORD = resolveEnv("NEXTCLOUD_APP_PASSWORD");
+const NEXTCLOUD_COLLECTIVE_ID = resolveEnv("NEXTCLOUD_COLLECTIVE_ID");
+const NEXTCLOUD_COLLECTIVE_PARENT_PAGE_ID = resolveEnv("NEXTCLOUD_COLLECTIVE_PARENT_PAGE_ID");
+
+const hasNextcloud =
+  NEXTCLOUD_BASE_URL &&
+  NEXTCLOUD_USERNAME &&
+  NEXTCLOUD_APP_PASSWORD &&
+  NEXTCLOUD_COLLECTIVE_ID &&
+  NEXTCLOUD_COLLECTIVE_PARENT_PAGE_ID;
+
+const skipNotion = /^(1|true|yes)$/i.test((resolveEnv("SKIP_NOTION") ?? "").trim());
+
+if (!OPENROUTER_API_KEY) {
+  console.error("Error: Missing OPENROUTER_API_KEY");
   Deno.exit(1);
 }
 
-if (!notionDatabaseId) {
-  console.error(
-    `Error: Missing env var ${flowConfig.notionDatabaseEnvKey} for flow ${flowKey}`,
-  );
-  Deno.exit(1);
-}
-
-if (flowConfig.includeAttendees && !NOTION_USER_ID) {
-  console.error("Error: Missing NOTION_USER_ID env var for attendees field");
+if (!skipNotion) {
+  if (!NOTION_API_KEY) {
+    console.error("Error: Missing NOTION_API_KEY (or set SKIP_NOTION=1 to push only to Collectives)");
+    Deno.exit(1);
+  }
+  if (!notionDatabaseId) {
+    console.error(
+      `Error: Missing env var ${flowConfig.notionDatabaseEnvKey} for flow ${flowKey}`,
+    );
+    Deno.exit(1);
+  }
+  if (flowConfig.includeAttendees && !NOTION_USER_ID) {
+    console.error("Error: Missing NOTION_USER_ID env var for attendees field");
+    Deno.exit(1);
+  }
+} else if (!hasNextcloud) {
+  console.error("Error: SKIP_NOTION is set but Nextcloud Collectives is not configured. Set Nextcloud env vars or unset SKIP_NOTION.");
   Deno.exit(1);
 }
 
@@ -227,87 +256,125 @@ async function processTranscription(filePath: string): Promise<void> {
     return;
   }
 
-  // Read file contents
-  let fileContents: string;
-  try {
-    fileContents = await Deno.readTextFile(filePath);
-    console.log(`File contents loaded (${fileContents.length} characters)`);
-  } catch (error) {
-    console.error("Error reading file:", error);
-    return;
-  }
-
-  // Load prompt and get summary
-  const basePrompt = await loadPrompt(flowConfig.promptFilePath);
-  const summaries: { label: string; content: string }[] = [];
-
-  for (const config of summarizerConfigs) {
+  let combinedSummary = await readCachedSummary(filePath, flowKey);
+  if (combinedSummary) {
+    console.log(`Using cached summary from ${getSummaryCachePath(filePath, flowKey)}`);
+  } else {
+    // Read file contents
+    let fileContents: string;
     try {
-      console.log(
-        `Generating summary with ${config.label} (${config.model})...`,
-      );
-      const content = await getOpenRouterSummary({
-        systemPrompt: basePrompt,
-        content: fileContents,
-        apiKey: OPENROUTER_API_KEY,
-        model: config.model,
-      });
-      summaries.push({ label: config.label, content });
-      console.log(`${config.label} summary generated successfully`);
+      fileContents = await Deno.readTextFile(filePath);
+      console.log(`File contents loaded (${fileContents.length} characters)`);
     } catch (error) {
-      console.error(
-        `Error during summarization with ${config.label} (${config.model}):`,
-        error,
-      );
-      await logProcessedFile(filePath, false, undefined, flowKey);
-      await showNotification(
-        "Transcription Error",
-        `Failed to generate ${config.label}`,
-      );
+      console.error("Error reading file:", error);
       return;
     }
+
+    // Load prompt and get summary
+    const basePrompt = await loadPrompt(flowConfig.promptFilePath);
+    const summaries: { label: string; content: string }[] = [];
+
+    for (const config of summarizerConfigs) {
+      try {
+        console.log(
+          `Generating summary with ${config.label} (${config.model})...`,
+        );
+        const content = await getOpenRouterSummary({
+          systemPrompt: basePrompt,
+          content: fileContents,
+          apiKey: OPENROUTER_API_KEY!,
+          model: config.model,
+        });
+        summaries.push({ label: config.label, content });
+        console.log(`${config.label} summary generated successfully`);
+      } catch (error) {
+        console.error(
+          `Error during summarization with ${config.label} (${config.model}):`,
+          error,
+        );
+        await logProcessedFile(filePath, false, undefined, flowKey);
+        await showNotification(
+          "Transcription Error",
+          `Failed to generate ${config.label}`,
+        );
+        return;
+      }
+    }
+
+    const hasMultipleSummaries = summaries.length > 1;
+    combinedSummary = hasMultipleSummaries
+      ? summaries
+        .map((summary) => `## ${summary.label}\n\n${summary.content.trim()}`)
+        .join("\n\n")
+      : (summaries[0]?.content.trim() ?? "");
+
+    const cachePath = await writeCachedSummary(filePath, flowKey, combinedSummary);
+    console.log(`Saved summary cache: ${cachePath}`);
   }
 
-  const hasMultipleSummaries = summaries.length > 1;
-  const combinedSummary = hasMultipleSummaries
-    ? summaries
-      .map((summary) => `## ${summary.label}\n\n${summary.content.trim()}`)
-      .join("\n\n")
-    : (summaries[0]?.content.trim() ?? "");
-
-  // Create Notion document
+  // Create document (Notion and/or Collectives)
   const fileName = filePath.split("/").pop() || "Unknown";
   const baseName = fileName.replace(/\.[^/.]+$/, "");
   const documentTitle = flowConfig.documentTitleBuilder
     ? flowConfig.documentTitleBuilder(baseName)
     : `Summary - ${baseName}`;
 
-  const notionUserIdForDoc = flowConfig.includeAttendees ? NOTION_USER_ID : undefined;
+  let documentUrl: string | undefined;
 
   try {
-    console.log("Creating Notion document...");
-    const documentUrl = await createNotionDocument(
-      documentTitle,
-      combinedSummary,
-      notionUserIdForDoc,
-      notionDatabaseId,
-      NOTION_API_KEY,
-      {
-        includeAttendees: flowConfig.includeAttendees,
-        titlePropertyName: flowConfig.titlePropertyName,
-        additionalProperties: flowConfig.additionalProperties,
-      },
-    );
+    if (!skipNotion) {
+      console.log("Creating Notion document...");
+      const notionUserIdForDoc = flowConfig.includeAttendees ? NOTION_USER_ID : undefined;
+      documentUrl = await createNotionDocument(
+        documentTitle,
+        combinedSummary,
+        notionUserIdForDoc,
+        notionDatabaseId!,
+        NOTION_API_KEY!,
+        {
+          includeAttendees: flowConfig.includeAttendees,
+          titlePropertyName: flowConfig.titlePropertyName,
+          additionalProperties: flowConfig.additionalProperties,
+        },
+      );
+    }
 
-    console.log(`✅ Success! Document created: ${documentUrl}`);
+    if (hasNextcloud) {
+      try {
+        const collectivesUrl = await createCollectivesDocument(
+          documentTitle,
+          combinedSummary,
+          {
+            baseUrl: NEXTCLOUD_BASE_URL!,
+            username: NEXTCLOUD_USERNAME!,
+            appPassword: NEXTCLOUD_APP_PASSWORD!,
+            collectiveId: NEXTCLOUD_COLLECTIVE_ID!,
+            parentPageId: NEXTCLOUD_COLLECTIVE_PARENT_PAGE_ID!,
+          },
+        );
+        console.log("Collectives URL:", collectivesUrl);
+        if (!documentUrl) documentUrl = collectivesUrl;
+      } catch (collectivesError) {
+        if (!skipNotion) {
+          console.warn("Nextcloud Collectives push failed (Notion succeeded):", collectivesError);
+        } else {
+          throw collectivesError;
+        }
+      }
+    }
+
+    console.log(`✅ Success! Document created: ${documentUrl ?? "(no URL)"}`);
     await logProcessedFile(filePath, true, documentUrl, flowKey);
     await showNotification(
       flowConfig.notifications.successTitle,
       flowConfig.notifications.successMessage,
-      documentUrl,
+      documentUrl ?? "",
     );
   } catch (error) {
-    console.error("Error creating Notion document:", error);
+    console.error(
+      skipNotion ? "Error creating Collectives document:" : "Error creating Notion document:",
+      error,
+    );
     await logProcessedFile(filePath, false, undefined, flowKey);
     await showNotification(
       flowConfig.notifications.failureTitle,

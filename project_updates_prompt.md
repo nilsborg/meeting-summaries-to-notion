@@ -33,6 +33,7 @@
    - **Accurate** to the transcript provided.
    - **Comprehensive yet concise**—avoid unnecessary repetition.
    - **Readable and well-structured** (use bullet points, headings, or short paragraphs).
+   - Always write the summary from the I perspective of Nils
 
 4. **Formatting details**:
 
