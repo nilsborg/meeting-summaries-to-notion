@@ -2,6 +2,7 @@
 debug.log
 processed_files.json
 source/
+source-audio/
 .vscode
 summary.txt
 .DS_Store
