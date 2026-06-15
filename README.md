@@ -55,7 +55,7 @@ Set `NEXTCLOUD_COLLECTIVE_ID` and `NEXTCLOUD_COLLECTIVE_PARENT_PAGE_ID` to the n
 
 **Temporary – skip Notion:** Set `SKIP_NOTION=1` (or `true`/`yes`) to push only to Nextcloud Collectives; Notion env vars are not required. Nextcloud must be configured when using this. Remove or set to `0` to re-enable Notion.
 
-Both flows currently use the same summary model (Claude). To tweak them, edit `FLOW_CONFIGS` in `main.ts` and `rerun.ts`.
+Both flows use the summary model defined in `config/summaryModels.ts`.
 
 ### File Structure
 ```

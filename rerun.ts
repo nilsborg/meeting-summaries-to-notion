@@ -11,23 +11,28 @@ import {
 } from "./functions/logProcessedFile.ts";
 import { getOpenRouterSummary } from "./functions/getOpenRouterSummary.ts";
 import {
-  getSummaryModelConfigs,
+  MEETING_SUMMARY_MODELS,
+  PROJECT_UPDATE_SUMMARY_MODELS,
   type SummaryModelConfig,
-} from "./functions/getSummaryModelConfigs.ts";
+} from "./config/summaryModels.ts";
 import {
   getSummaryCachePath,
   readCachedSummary,
   writeCachedSummary,
 } from "./functions/summaryCache.ts";
 
-const transcriptionFolder = "/Users/nilsborg/Repos/meeting-summaries-to-notion/source";
-const audioFolder = "/Users/nilsborg/Repos/meeting-summaries-to-notion/source-audio";
+const transcriptionFolder =
+  "/Users/nilsborg/Repos/meeting-summaries-to-notion/source";
+const audioFolder =
+  "/Users/nilsborg/Repos/meeting-summaries-to-notion/source-audio";
 const promptPaths = {
   meeting: "/Users/nilsborg/Repos/meeting-summaries-to-notion/prompt.md",
-  "project-updates": "/Users/nilsborg/Repos/meeting-summaries-to-notion/project_updates_prompt.md",
+  "project-updates":
+    "/Users/nilsborg/Repos/meeting-summaries-to-notion/project_updates_prompt.md",
 } as const;
 
 type FlowKey = keyof typeof promptPaths;
+type SummaryLanguage = "english" | "german";
 
 interface FlowConfig {
   promptFilePath: string;
@@ -45,17 +50,12 @@ interface FlowConfig {
   };
 }
 
-const DEFAULT_SUMMARY_MODELS = getSummaryModelConfigs();
-const PROJECT_UPDATE_SUMMARY_MODELS: SummaryModelConfig[] = [
-  { label: "Claude Summary", model: "anthropic/claude-opus-4.1" },
-];
-
 const FLOW_CONFIGS: Record<FlowKey, FlowConfig> = {
   meeting: {
     promptFilePath: promptPaths.meeting,
     notionDatabaseEnvKey: "NOTION_MEETING_DATABASE_ID",
     includeAttendees: true,
-    summaryModels: [...DEFAULT_SUMMARY_MODELS],
+    summaryModels: [...MEETING_SUMMARY_MODELS],
     titlePropertyName: "Name",
     documentTitleBuilder: (name) => `Meeting Notes - ${name}`,
     notifications: {
@@ -92,7 +92,9 @@ const FLOW_ALIASES: Record<string, FlowKey> = {
 };
 
 // Load environment variables
-const env = config({ path: "/Users/nilsborg/Repos/meeting-summaries-to-notion/.env" }) as Record<
+const env = config({
+  path: "/Users/nilsborg/Repos/meeting-summaries-to-notion/.env",
+}) as Record<
   string,
   string
 >;
@@ -103,6 +105,7 @@ const resolveEnv = (key: string): string | undefined => {
 
 const parseFlowFromArgs = (args: string[]) => {
   let flowArg: string | undefined;
+  let langArg: string | undefined;
   const filteredArgs: string[] = [];
 
   for (let i = 0; i < args.length; i++) {
@@ -119,13 +122,24 @@ const parseFlowFromArgs = (args: string[]) => {
       continue;
     }
 
+    if (arg === "--lang" || arg === "-L") {
+      langArg = args[i + 1];
+      i++;
+      continue;
+    }
+
+    if (arg.startsWith("--lang=")) {
+      langArg = arg.split("=")[1];
+      continue;
+    }
+
     filteredArgs.push(arg);
   }
 
-  return { flowArg, filteredArgs };
+  return { flowArg, langArg, filteredArgs };
 };
 
-const { flowArg, filteredArgs } = parseFlowFromArgs([...Deno.args]);
+const { flowArg, langArg, filteredArgs } = parseFlowFromArgs([...Deno.args]);
 
 const rawFlow = (flowArg ?? resolveEnv("FLOW_TYPE") ?? "meeting").trim()
   .toLowerCase();
@@ -141,16 +155,19 @@ const NEXTCLOUD_BASE_URL = resolveEnv("NEXTCLOUD_BASE_URL");
 const NEXTCLOUD_USERNAME = resolveEnv("NEXTCLOUD_USERNAME");
 const NEXTCLOUD_APP_PASSWORD = resolveEnv("NEXTCLOUD_APP_PASSWORD");
 const NEXTCLOUD_COLLECTIVE_ID = resolveEnv("NEXTCLOUD_COLLECTIVE_ID");
-const NEXTCLOUD_COLLECTIVE_PARENT_PAGE_ID = resolveEnv("NEXTCLOUD_COLLECTIVE_PARENT_PAGE_ID");
+const NEXTCLOUD_COLLECTIVE_PARENT_PAGE_ID = resolveEnv(
+  "NEXTCLOUD_COLLECTIVE_PARENT_PAGE_ID",
+);
 
-const hasNextcloud =
-  NEXTCLOUD_BASE_URL &&
+const hasNextcloud = NEXTCLOUD_BASE_URL &&
   NEXTCLOUD_USERNAME &&
   NEXTCLOUD_APP_PASSWORD &&
   NEXTCLOUD_COLLECTIVE_ID &&
   NEXTCLOUD_COLLECTIVE_PARENT_PAGE_ID;
 
-const skipNotion = /^(1|true|yes)$/i.test((resolveEnv("SKIP_NOTION") ?? "").trim());
+const skipNotion = /^(1|true|yes)$/i.test(
+  (resolveEnv("SKIP_NOTION") ?? "").trim(),
+);
 
 if (!OPENROUTER_API_KEY) {
   console.error("Error: Missing OPENROUTER_API_KEY");
@@ -159,7 +176,9 @@ if (!OPENROUTER_API_KEY) {
 
 if (!skipNotion) {
   if (!NOTION_API_KEY) {
-    console.error("Error: Missing NOTION_API_KEY (or set SKIP_NOTION=1 to push only to Collectives)");
+    console.error(
+      "Error: Missing NOTION_API_KEY (or set SKIP_NOTION=1 to push only to Collectives)",
+    );
     Deno.exit(1);
   }
   if (!notionDatabaseId) {
@@ -173,12 +192,28 @@ if (!skipNotion) {
     Deno.exit(1);
   }
 } else if (!hasNextcloud) {
-  console.error("Error: SKIP_NOTION is set but Nextcloud Collectives is not configured. Set Nextcloud env vars or unset SKIP_NOTION.");
+  console.error(
+    "Error: SKIP_NOTION is set but Nextcloud Collectives is not configured. Set Nextcloud env vars or unset SKIP_NOTION.",
+  );
   Deno.exit(1);
 }
 
 const summarizerConfigs = flowConfig.summaryModels;
 console.log(`Running rerun flow: ${flowKey}`);
+
+function getSummaryCacheFlowKey(language: SummaryLanguage): string {
+  return language === "english" ? flowKey : `${flowKey}-${language}`;
+}
+
+function getSummaryLanguageInstruction(language: SummaryLanguage): string {
+  return language === "german"
+    ? "Write the summary in German. Also translate/adapt all headings and closing text to German."
+    : "Write the summary in English. Also translate/adapt all headings and closing text to English.";
+}
+
+function getWhisperLanguage(language: SummaryLanguage): string {
+  return language === "german" ? "de" : "auto";
+}
 
 async function findMatchingFiles(searchTerm: string): Promise<string[]> {
   const matchingFiles: string[] = [];
@@ -234,7 +269,9 @@ async function findMatchingItems(searchTerm: string): Promise<MatchItem[]> {
     for await (const entry of Deno.readDir(audioFolder)) {
       if (!entry.isFile) continue;
       if (!entry.name.toLowerCase().includes(term)) continue;
-      const transcriptionPath = `${transcriptionFolder}/${getTranscriptionFileNameForAudio(entry.name)}`;
+      const transcriptionPath = `${transcriptionFolder}/${
+        getTranscriptionFileNameForAudio(entry.name)
+      }`;
       let transcriptionExists = false;
       try {
         await Deno.stat(transcriptionPath);
@@ -318,7 +355,9 @@ function parseDateFromNameForDayKey(name: string): string | undefined {
   return formatLocalDayKey(new Date(year, month, day));
 }
 
-async function getRecentFileEntries(count: number = 10): Promise<RecentFileEntry[]> {
+async function getRecentFileEntries(
+  count: number = 10,
+): Promise<RecentFileEntry[]> {
   const entries: RecentFileEntry[] = [];
   for await (const entry of Deno.readDir(transcriptionFolder)) {
     if (!entry.isFile) continue;
@@ -358,7 +397,9 @@ function isSupportedWhisperAudio(fileName: string): boolean {
 }
 
 async function resolveWhisperModelPath(): Promise<string> {
-  const envModel = (resolveEnv("WHISPER_MODEL") ?? resolveEnv("WHISPER_MODEL_PATH") ?? "").trim();
+  const envModel =
+    (resolveEnv("WHISPER_MODEL") ?? resolveEnv("WHISPER_MODEL_PATH") ?? "")
+      .trim();
   if (envModel) return envModel;
 
   const home = Deno.env.get("HOME") ?? "";
@@ -395,7 +436,8 @@ async function resolveWhisperModelPath(): Promise<string> {
     if (found) return found.path;
   }
 
-  const newest = candidates.sort((a, b) => b.mtime.getTime() - a.mtime.getTime())[0];
+  const newest =
+    candidates.sort((a, b) => b.mtime.getTime() - a.mtime.getTime())[0];
   if (newest) return newest.path;
 
   // whisper-cli default expects models/ggml-base.en.bin, but user said they keep models in ~/whisper-models
@@ -407,7 +449,11 @@ async function resolveWhisperModelPath(): Promise<string> {
 
 async function commandExists(cmd: string): Promise<boolean> {
   try {
-    const proc = new Deno.Command("which", { args: [cmd], stdout: "null", stderr: "null" }).spawn();
+    const proc = new Deno.Command("which", {
+      args: [cmd],
+      stdout: "null",
+      stderr: "null",
+    }).spawn();
     const status = await proc.status;
     return status.success;
   } catch {
@@ -420,7 +466,9 @@ async function ensureWavInput(
   audioFileName: string,
   opts: { forceWav?: boolean } = {},
 ): Promise<{ path: string; cleanup?: () => Promise<void> }> {
-  if (!opts.forceWav && isSupportedWhisperAudio(audioFileName)) return { path: audioPath };
+  if (!opts.forceWav && isSupportedWhisperAudio(audioFileName)) {
+    return { path: audioPath };
+  }
 
   // Try best-effort conversion for formats like m4a using ffmpeg (if available)
   const hasFfmpeg = await commandExists("ffmpeg");
@@ -457,7 +505,11 @@ async function ensureWavInput(
 async function transcribeAudioToText(
   audioPath: string,
   audioFileName: string,
-  opts: { force?: boolean; forceWav?: boolean } = {},
+  opts: {
+    force?: boolean;
+    forceWav?: boolean;
+    summaryLanguage?: SummaryLanguage;
+  } = {},
 ): Promise<string> {
   const transcriptionFileName = getTranscriptionFileNameForAudio(audioFileName);
   const transcriptionPath = `${transcriptionFolder}/${transcriptionFileName}`;
@@ -479,11 +531,20 @@ async function transcribeAudioToText(
   }
 
   const modelPath = await resolveWhisperModelPath();
-  const input = await ensureWavInput(audioPath, audioFileName, { forceWav: opts.forceWav });
+  const whisperLanguage = getWhisperLanguage(opts.summaryLanguage ?? "english");
+  if (whisperLanguage !== "auto" && /\.en\.bin$/i.test(modelPath)) {
+    throw new Error(
+      `German transcription requires a multilingual Whisper model, but the selected model is English-only: ${modelPath}`,
+    );
+  }
+  const input = await ensureWavInput(audioPath, audioFileName, {
+    forceWav: opts.forceWav,
+  });
 
   try {
     console.log(`\nTranscribing audio with whisper.cpp: ${audioFileName}`);
     console.log(`Model: ${modelPath}`);
+    console.log(`Language: ${whisperLanguage}`);
 
     // whisper-cli output path is "without extension"
     const outputBase = transcriptionPath.replace(/\.txt$/i, "");
@@ -494,7 +555,7 @@ async function transcribeAudioToText(
         "--file",
         input.path,
         "--language",
-        "auto",
+        whisperLanguage,
         "--max-context",
         "0",
         "--no-timestamps",
@@ -517,12 +578,14 @@ async function transcribeAudioToText(
     console.log(`\nSaved transcription: ${transcriptionPath}`);
 
     // If we just (re)generated the transcription, ensure we don't reuse an old cached summary.
-    const cachePath = getSummaryCachePath(transcriptionPath, flowKey);
-    try {
-      await Deno.remove(cachePath);
-      console.log(`Deleted stale summary cache: ${cachePath}`);
-    } catch {
-      // ignore if missing
+    for (const cacheFlowKey of [flowKey, `${flowKey}-german`]) {
+      const cachePath = getSummaryCachePath(transcriptionPath, cacheFlowKey);
+      try {
+        await Deno.remove(cachePath);
+        console.log(`Deleted stale summary cache: ${cachePath}`);
+      } catch {
+        // ignore if missing
+      }
     }
 
     return transcriptionPath;
@@ -531,7 +594,9 @@ async function transcribeAudioToText(
   }
 }
 
-async function getRecentRecordings(count: number = 10): Promise<RecentRecordingEntry[]> {
+async function getRecentRecordings(
+  count: number = 10,
+): Promise<RecentRecordingEntry[]> {
   const audio: RecentRecordingEntry[] = [];
   const transcription: RecentRecordingEntry[] = [];
 
@@ -542,7 +607,9 @@ async function getRecentRecordings(count: number = 10): Promise<RecentRecordingE
       const filePath = `${audioFolder}/${entry.name}`;
       const stat = await Deno.stat(filePath);
       if (!stat.mtime) continue;
-      const expectedTranscriptionPath = `${transcriptionFolder}/${getTranscriptionFileNameForAudio(entry.name)}`;
+      const expectedTranscriptionPath = `${transcriptionFolder}/${
+        getTranscriptionFileNameForAudio(entry.name)
+      }`;
       let transcriptionExists = false;
       try {
         await Deno.stat(expectedTranscriptionPath);
@@ -555,7 +622,8 @@ async function getRecentRecordings(count: number = 10): Promise<RecentRecordingE
         filePath,
         fileName: entry.name,
         mtime: stat.mtime,
-        dayKey: parseDateFromNameForDayKey(entry.name) ?? formatLocalDayKey(stat.mtime),
+        dayKey: parseDateFromNameForDayKey(entry.name) ??
+          formatLocalDayKey(stat.mtime),
         transcriptionPath: expectedTranscriptionPath,
         transcriptionExists,
       });
@@ -576,14 +644,16 @@ async function getRecentRecordings(count: number = 10): Promise<RecentRecordingE
         filePath,
         fileName: entry.name,
         mtime: stat.mtime,
-        dayKey: parseDateFromNameForDayKey(entry.name) ?? formatLocalDayKey(stat.mtime),
+        dayKey: parseDateFromNameForDayKey(entry.name) ??
+          formatLocalDayKey(stat.mtime),
       });
     }
   } catch {
     // ignore
   }
 
-  const byMtimeDesc = (a: RecentRecordingEntry, b: RecentRecordingEntry) => b.mtime.getTime() - a.mtime.getTime();
+  const byMtimeDesc = (a: RecentRecordingEntry, b: RecentRecordingEntry) =>
+    b.mtime.getTime() - a.mtime.getTime();
 
   const audioSorted = audio.sort(byMtimeDesc);
   const transcriptionSorted = transcription.sort(byMtimeDesc);
@@ -608,15 +678,21 @@ async function getRecentRecordings(count: number = 10): Promise<RecentRecordingE
   return combined.sort(byMtimeDesc).slice(0, count);
 }
 
-async function promptSelectFromRecentFiles(count: number = 10): Promise<RecentRecordingEntry | undefined> {
+async function promptSelectFromRecentFiles(
+  count: number = 10,
+): Promise<RecentRecordingEntry | undefined> {
   try {
     const recent = await getRecentRecordings(count);
     if (recent.length === 0) {
-      console.log(`No recordings found in: ${audioFolder} (or transcriptions in: ${transcriptionFolder})`);
+      console.log(
+        `No recordings found in: ${audioFolder} (or transcriptions in: ${transcriptionFolder})`,
+      );
       return undefined;
     }
 
-    console.log(`\nNo date/search term provided. Pick one of the last ${recent.length} recordings:\n`);
+    console.log(
+      `\nNo date/search term provided. Pick one of the last ${recent.length} recordings:\n`,
+    );
 
     let currentDay: string | undefined;
     for (let i = 0; i < recent.length; i++) {
@@ -633,7 +709,9 @@ async function promptSelectFromRecentFiles(count: number = 10): Promise<RecentRe
       }
     }
 
-    console.log(`\nEnter the number (1-${recent.length}) to process, or press Enter to cancel:`);
+    console.log(
+      `\nEnter the number (1-${recent.length}) to process, or press Enter to cancel:`,
+    );
     const input = prompt("Selection: ");
     if (!input || input.trim() === "") return undefined;
 
@@ -670,11 +748,48 @@ async function listFailedFiles(): Promise<void> {
   }
 }
 
+function parseSummaryLanguage(value: string | undefined): SummaryLanguage | undefined {
+  const normalized = (value ?? "").trim().toLowerCase();
+  if (!normalized) return undefined;
+
+  if (
+    normalized === "2" || normalized === "de" || normalized === "deutsch" ||
+    normalized === "german"
+  ) {
+    return "german";
+  }
+
+  if (
+    normalized === "1" || normalized === "en" || normalized === "english" ||
+    normalized === "englisch"
+  ) {
+    return "english";
+  }
+
+  return undefined;
+}
+
+function resolveSummaryLanguage(cliLang?: string): SummaryLanguage {
+  const fromCli = parseSummaryLanguage(cliLang);
+  if (fromCli) return fromCli;
+
+  const fromEnv = parseSummaryLanguage(resolveEnv("SUMMARY_LANGUAGE"));
+  if (fromEnv) return fromEnv;
+
+  console.log("\nLanguage:");
+  console.log("  1. English (default)");
+  console.log("  2. German");
+  const input = prompt("Choose language [1/2, default: 1]: ");
+  return parseSummaryLanguage(input) ?? "english";
+}
+
 async function processTranscription(
   filePath: string,
-  opts: { skipCache?: boolean } = {},
+  opts: { skipCache?: boolean; summaryLanguage?: SummaryLanguage } = {},
 ): Promise<void> {
   console.log(`Processing: ${filePath}`);
+  const summaryLanguage = opts.summaryLanguage ?? "english";
+  const summaryCacheFlowKey = getSummaryCacheFlowKey(summaryLanguage);
 
   // Check if file exists
   try {
@@ -684,9 +799,15 @@ async function processTranscription(
     return;
   }
 
-  let combinedSummary = opts.skipCache ? null : await readCachedSummary(filePath, flowKey);
+  let combinedSummary = opts.skipCache
+    ? null
+    : await readCachedSummary(filePath, summaryCacheFlowKey);
   if (combinedSummary) {
-    console.log(`Using cached summary from ${getSummaryCachePath(filePath, flowKey)}`);
+    console.log(
+      `Using cached summary from ${
+        getSummaryCachePath(filePath, summaryCacheFlowKey)
+      }`,
+    );
   } else {
     // Read file contents
     let fileContents: string;
@@ -700,6 +821,9 @@ async function processTranscription(
 
     // Load prompt and get summary
     const basePrompt = await loadPrompt(flowConfig.promptFilePath);
+    const languageInstruction = getSummaryLanguageInstruction(summaryLanguage);
+    const systemPrompt =
+      `${basePrompt.trim()}\n\nAdditional rerun instruction:\n${languageInstruction}`;
     const summaries: { label: string; content: string }[] = [];
 
     for (const config of summarizerConfigs) {
@@ -708,7 +832,7 @@ async function processTranscription(
           `Generating summary with ${config.label} (${config.model})...`,
         );
         const content = await getOpenRouterSummary({
-          systemPrompt: basePrompt,
+          systemPrompt,
           content: fileContents,
           apiKey: OPENROUTER_API_KEY!,
           model: config.model,
@@ -736,7 +860,11 @@ async function processTranscription(
         .join("\n\n")
       : (summaries[0]?.content.trim() ?? "");
 
-    const cachePath = await writeCachedSummary(filePath, flowKey, combinedSummary);
+    const cachePath = await writeCachedSummary(
+      filePath,
+      summaryCacheFlowKey,
+      combinedSummary,
+    );
     console.log(`Saved summary cache: ${cachePath}`);
   }
 
@@ -752,7 +880,9 @@ async function processTranscription(
   try {
     if (!skipNotion) {
       console.log("Creating Notion document...");
-      const notionUserIdForDoc = flowConfig.includeAttendees ? NOTION_USER_ID : undefined;
+      const notionUserIdForDoc = flowConfig.includeAttendees
+        ? NOTION_USER_ID
+        : undefined;
       documentUrl = await createNotionDocument(
         documentTitle,
         combinedSummary,
@@ -784,7 +914,10 @@ async function processTranscription(
         if (!documentUrl) documentUrl = collectivesUrl;
       } catch (collectivesError) {
         if (!skipNotion) {
-          console.warn("Nextcloud Collectives push failed (Notion succeeded):", collectivesError);
+          console.warn(
+            "Nextcloud Collectives push failed (Notion succeeded):",
+            collectivesError,
+          );
         } else {
           throw collectivesError;
         }
@@ -800,7 +933,9 @@ async function processTranscription(
     );
   } catch (error) {
     console.error(
-      skipNotion ? "Error creating Collectives document:" : "Error creating Notion document:",
+      skipNotion
+        ? "Error creating Collectives document:"
+        : "Error creating Notion document:",
       error,
     );
     await logProcessedFile(filePath, false, undefined, flowKey);
@@ -820,6 +955,7 @@ OPTIONS:
   -l, --list     List the 10 most recent transcription files
   -f, --failed   List files that failed to process previously
   -F, --flow     Specify the processing flow (meeting, project-updates)
+  -L, --lang     Summary language (english|german, or en|de). Skips interactive prompt.
       --force-transcribe  Force re-transcription from audio (when selecting audio)
       --force-wav         Always convert audio to 16kHz mono wav before whisper.cpp
 
@@ -852,13 +988,17 @@ async function main() {
   const forceWav = rawArgs.includes("--force-wav");
 
   // Filter out known flags so positional args are usable in any order.
-  const args = rawArgs.filter((a) =>
+  const args = rawArgs.filter((a, index, all) =>
     a !== "--force-transcribe" &&
     a !== "--force-wav" &&
     a !== "-l" &&
     a !== "--list" &&
     a !== "-f" &&
-    a !== "--failed"
+    a !== "--failed" &&
+    a !== "--lang" &&
+    a !== "-L" &&
+    !a.startsWith("--lang=") &&
+    !(index > 0 && (all[index - 1] === "--lang" || all[index - 1] === "-L"))
   );
 
   if (rawArgs.includes("-l") || rawArgs.includes("--list")) {
@@ -877,12 +1017,20 @@ async function main() {
       console.log("Cancelled.");
       return;
     }
+    const summaryLanguage = resolveSummaryLanguage(langArg);
     if (selected.kind === "audio") {
       // Selecting audio from the picker always re-transcribes to ensure the transcription matches the recording.
-      const transcriptionPath = await transcribeAudioToText(selected.filePath, selected.fileName, { force: true, forceWav });
-      await processTranscription(transcriptionPath, { skipCache: true });
+      const transcriptionPath = await transcribeAudioToText(
+        selected.filePath,
+        selected.fileName,
+        { force: true, forceWav, summaryLanguage },
+      );
+      await processTranscription(transcriptionPath, {
+        skipCache: true,
+        summaryLanguage,
+      });
     } else {
-      await processTranscription(selected.filePath);
+      await processTranscription(selected.filePath, { summaryLanguage });
     }
     return;
   }
@@ -900,11 +1048,19 @@ async function main() {
 
   if (matchingItems.length === 1) {
     const item = matchingItems[0];
+    const summaryLanguage = resolveSummaryLanguage(langArg);
     if (item.kind === "audio") {
-      const transcriptionPath = await transcribeAudioToText(item.filePath, item.fileName, { force: true, forceWav });
-      await processTranscription(transcriptionPath, { skipCache: true });
+      const transcriptionPath = await transcribeAudioToText(
+        item.filePath,
+        item.fileName,
+        { force: true, forceWav, summaryLanguage },
+      );
+      await processTranscription(transcriptionPath, {
+        skipCache: true,
+        summaryLanguage,
+      });
     } else {
-      await processTranscription(item.filePath);
+      await processTranscription(item.filePath, { summaryLanguage });
     }
     return;
   }
@@ -938,11 +1094,19 @@ async function main() {
   }
 
   const item = matchingItems[selection - 1];
+  const summaryLanguage = resolveSummaryLanguage(langArg);
   if (item.kind === "audio") {
-    const transcriptionPath = await transcribeAudioToText(item.filePath, item.fileName, { force: true, forceWav });
-    await processTranscription(transcriptionPath, { skipCache: true });
+    const transcriptionPath = await transcribeAudioToText(
+      item.filePath,
+      item.fileName,
+      { force: true, forceWav, summaryLanguage },
+    );
+    await processTranscription(transcriptionPath, {
+      skipCache: true,
+      summaryLanguage,
+    });
   } else {
-    await processTranscription(item.filePath);
+    await processTranscription(item.filePath, { summaryLanguage });
   }
 }
 

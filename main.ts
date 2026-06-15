@@ -14,9 +14,10 @@ import {
   writeCachedSummary,
 } from "./functions/summaryCache.ts";
 import {
-  getSummaryModelConfigs,
+  MEETING_SUMMARY_MODELS,
+  PROJECT_UPDATE_SUMMARY_MODELS,
   type SummaryModelConfig,
-} from "./functions/getSummaryModelConfigs.ts";
+} from "./config/summaryModels.ts";
 
 const transcriptionFolder = "/Users/nilsborg/Repos/meeting-summaries-to-notion/source";
 const promptPaths = {
@@ -42,17 +43,12 @@ interface FlowConfig {
   };
 }
 
-const DEFAULT_SUMMARY_MODELS = getSummaryModelConfigs();
-const PROJECT_UPDATE_SUMMARY_MODELS: SummaryModelConfig[] = [
-  { label: "Claude Summary", model: "anthropic/claude-opus-4.1" },
-];
-
 const FLOW_CONFIGS: Record<FlowKey, FlowConfig> = {
   meeting: {
     promptFilePath: promptPaths.meeting,
     notionDatabaseEnvKey: "NOTION_MEETING_DATABASE_ID",
     includeAttendees: true,
-    summaryModels: [...DEFAULT_SUMMARY_MODELS],
+    summaryModels: [...MEETING_SUMMARY_MODELS],
     titlePropertyName: "Name",
     documentTitleBuilder: () =>
       "Meeting Notes - " + new Date().toLocaleDateString(),
